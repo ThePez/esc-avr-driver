@@ -1,0 +1,46 @@
+; ISP-Programmer ini config
+[env:atmega328pb]
+platform = atmelavr
+board = ATmega328PB
+framework =
+board_build.f_cpu = 16000000L
+
+upload_protocol = usbasp
+upload_flags =
+    -e
+    -Pusb
+    -B50
+
+board_fuses.lfuse = 0xFF
+board_fuses.hfuse = 0xD9
+board_fuses.efuse = 0xFD
+
+build_flags =
+    -std=gnu11
+    -Wall
+
+extra_scripts = post:scripts/copy_compile_commands.py
+
+
+; Old version ...
+; [env:ATmega328PB]
+; platform = atmelavr
+; board = ATmega328PB
+; framework = 
+
+; upload_protocol = usbasp
+; upload_flags = 
+;     -Pusb
+;     -B50
+;     -e
+
+; board_fuses.lfuse = 0xFF
+; board_fuses.hfuse = 0xD9
+; board_fuses.efuse = 0xFD
+
+; build_flags = 
+;     -std=gnu11
+;     -Wall
+;     -Wl,-u,vfprintf,-lprintf_min
+
+; monitor_speed = 19200

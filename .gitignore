@@ -1,0 +1,7 @@
+.vscode
+**/build
+.clang-format
+*.old
+.idea
+compile_commands.json
+.clangd
