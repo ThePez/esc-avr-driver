@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Jack Cairns
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "serialio.h"
 #include "timers.h"
 
@@ -13,21 +19,21 @@ int main(void) {
     // Start timers
     initSystemTick();
     initTimer1_inputCapture();
-    initTimer2_pwm();
+    initTimer2_led_pwm();
 
     // Start Serial
     initSerialComs();
     sei();
     printf_P(PSTR("System ready!\n"));
-    uint32_t prev = getSysTicks();
+    uint32_t prev = getSysTick();
     while (1) {
         // printf_P(PSTR("Counter: %u\n"), counter++);
-        if (pwmDataReady() && getSysTicks() - prev > 1000) {
+        if (pwmDataReady() && getSysTick() - prev > 1000) {
             printf_P(PSTR("PW: %uus  Period: %uus  Freq: %uHz  Duty: %u  "
                           "Throttle: %u\n"),
                      getPulseWidth(), getPeriod(), getFrequency(),
-                     getDutyPerMille(), getThrottlePerMille());
-            prev = getSysTicks();
+                     getRawDutyPerMille(), getThrottlePerMille());
+            prev = getSysTick();
         }
 
         // Update LED pwm to match throttle

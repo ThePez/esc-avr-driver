@@ -1,13 +1,25 @@
+/*
+ * Copyright (c) 2026 Jack Cairns
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "serialio.h"
 
 #include <avr/interrupt.h>
 #include <avr/io.h>
 
-// Function Prototypes
+/* ========================================================================== */
+/* Function Prototypes                                                        */
+/* ========================================================================== */
+
 static int uartPutChar(char, FILE *stream);
 static int uartGetChar(FILE *stream);
 
-////////////////////////////// USART Variables ///////////////////////////////
+/* ========================================================================== */
+/* USART Variables                                                            */
+/* ========================================================================== */
+
 static volatile char outputBuffer[OUTPUT_BUFFER_SIZE]; // UART output buffer
 static volatile uint8_t outputHead;                    // buffer insert position
 static volatile uint8_t outputTail;                    // buffer read position
@@ -20,7 +32,9 @@ static volatile uint8_t inputTail;                   // buffer read position
 static FILE myStream =
     FDEV_SETUP_STREAM(uartPutChar, uartGetChar, _FDEV_SETUP_RW);
 
-////////////////////////////////// Functions /////////////////////////////////
+/* ========================================================================== */
+/* Functions                                                                  */
+/* ========================================================================== */
 
 int8_t initSerialComs(void) {
     // Initialize our buffers
@@ -70,9 +84,6 @@ static int uartPutChar(char character, FILE *stream) {
     return 0;
 }
 
-/**
- * @brief Blocking wrapper for uartGetChar()
- */
 int uartGetCharBlocking(FILE *stream) {
     while (inputHead == inputTail) {
         // Wait for data

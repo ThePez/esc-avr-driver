@@ -1,5 +1,5 @@
-#ifndef SERIALIO_H_
-#define SERIALIO_H_
+#ifndef SERIALIO_H
+#define SERIALIO_H
 
 #include <stdint.h>
 #include <stdio.h>
