@@ -155,7 +155,7 @@ void initTimer_gate_pwm(void) {
 /* Disable Functions                                                          */
 /* ========================================================================== */
 
-void disableTimer0(void) {
+static void disableTimer0(void) {
     uint8_t interrupts = bit_is_set(SREG, SREG_I);
     cli();
 
@@ -167,7 +167,7 @@ void disableTimer0(void) {
     }
 }
 
-void disableTimer1(void) {
+static void disableTimer1(void) {
     uint8_t interrupts = bit_is_set(SREG, SREG_I);
     cli();
 
@@ -179,7 +179,7 @@ void disableTimer1(void) {
     }
 }
 
-void disableTimer2(void) {
+static void disableTimer2(void) {
     uint8_t interrupts = bit_is_set(SREG, SREG_I);
     cli();
 
@@ -191,7 +191,7 @@ void disableTimer2(void) {
     }
 }
 
-void disableTimer3(void) {
+static void disableTimer3(void) {
     uint8_t interrupts = bit_is_set(SREG, SREG_I);
     cli();
 
@@ -203,7 +203,7 @@ void disableTimer3(void) {
     }
 }
 
-void disableTimer4(void) {
+static void disableTimer4(void) {
     uint8_t interrupts = bit_is_set(SREG, SREG_I);
     cli();
 
@@ -305,11 +305,11 @@ uint16_t getFrequency(void) {
     return (p == 0) ? 0 : (F_CPU / TIMER1_PRESCALER) / p;
 }
 
-/* Returns raw duty cycle of RC signal as 0-1000 per mille
+/* Returns raw duty cycle of RC signal as 0-1000 (0 - 100.0%)
  * Note: RC signal at 50Hz will read ~50 to 100, NOT throttle position
  * Use getThrottlePerMille() for throttle
  */
-uint16_t getRawDutyPerMille(void) {
+uint16_t getRawDuty(void) {
     uint16_t pw, p;
     uint8_t interrupts = bit_is_set(SREG, SREG_I);
     cli();
@@ -325,8 +325,8 @@ uint16_t getRawDutyPerMille(void) {
     return (p == 0) ? 0 : (uint16_t)(((uint32_t)pw * 1000) / p);
 }
 
-// Returns throttle as 0-1000 per mille (maps 1ms-2ms pulse to 0-100.0%)
-uint16_t getThrottlePerMille(void) {
+// Returns throttle as 0-1000 (maps 1ms-2ms pulse to 0-100.0%)
+uint16_t getThrottle(void) {
     uint16_t pw = getPulseWidth();
     return (pw <= 1000) ? 0 : (pw >= 2000) ? 1000 : pw - 1000;
 }

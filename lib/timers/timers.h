@@ -32,8 +32,8 @@ void clearPwmDataReady(void);
 uint16_t getPulseWidth(void);
 uint16_t getPeriod(void);
 uint16_t getFrequency(void);
-uint16_t getRawDutyPerMille(void);
-uint16_t getThrottlePerMille(void);
+uint16_t getRawDuty(void);
+uint16_t getThrottle(void);
 
 ////////////////////////////// System Tick Getters ////////////////////////////
 
