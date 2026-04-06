@@ -36,12 +36,15 @@ static FILE myStream =
 /* Functions                                                                  */
 /* ========================================================================== */
 
-/* initSerialComs()
- * ----------------
- * Initialises the UART peripheral at the baud rate defined by BRC in
- * serialio.h. Enables RX and TX, enables the receive complete interrupt,
- * and redirects stdin/stdout to the UART stream so printf/scanf work
- * transparently over serial.
+/**
+ * @brief Initialises the UART peripheral and redirects stdin/stdout to serial.
+ *
+ * @details Configures USART0 at the baud rate defined by BRC in serialio.h.
+ *          Enables RX and TX, enables the receive complete interrupt, and
+ *          redirects stdin/stdout to the UART stream so printf/scanf work
+ *          transparently over serial.
+ *
+ * @return 0 on success.
  */
 int8_t initSerialComs(void) {
     // Initialize our buffers
@@ -64,31 +67,38 @@ int8_t initSerialComs(void) {
     return 0;
 }
 
-/* serialInputAvailable()
- * ----------------------
- * Returns non-zero if there is at least one character waiting in the
- * input ring buffer, zero if the buffer is empty.
+/**
+ * @brief Returns non-zero if there is at least one character waiting in the
+ *        input buffer.
+ *
+ * @return Non-zero if data is available, 0 if the buffer is empty.
  */
 int8_t serialInputAvailable(void) {
     return inputHead != inputTail;
 }
 
-/* clearSerialInputBuffer()
- * ------------------------
- * Discards all pending input by resetting the ring buffer head and tail
- * to zero. Any characters received before this call are lost.
+/**
+ * @brief Discards all pending input by resetting the ring buffer head and tail.
+ *
+ * @details Any characters received before this call are lost.
  */
 void clearSerialInputBuffer(void) {
     inputHead = 0;
     inputTail = 0;
 }
 
-/* uartPutChar()
- * -------------
- * Called by the FILE stream on every printf/putchar. Inserts the character
- * into the output ring buffer and enables the UDRE interrupt to start
- * draining it. Newline characters are expanded to \r\n so terminal
- * emulators display correctly.
+/**
+ * @brief Inserts a character into the output ring buffer and triggers
+ *        transmission.
+ *
+ * @details Called by the FILE stream on every printf/putchar. Enables the UDRE
+ *          interrupt to start draining the buffer. Newline characters are
+ *          expanded to \r\n so terminal emulators display correctly.
+ *
+ * @param character The character to transmit.
+ * @param stream    The FILE stream (unused, required by avr-libc FILE
+ *                  interface).
+ * @return 0 on success.
  */
 static int uartPutChar(char character, FILE *stream) {
     if (character == '\n') {
@@ -108,11 +118,14 @@ static int uartPutChar(char character, FILE *stream) {
     return 0;
 }
 
-/* uartGetCharBlocking()
- * ---------------------
- * Blocking wrapper around uartGetChar(). Spins until at least one character
- * is available in the input ring buffer before returning it. Use only where
- * stalling the CPU is acceptable.
+/**
+ * @brief Blocking read from the input ring buffer.
+ *
+ * @details Spins until at least one character is available before returning.
+ *          Use only where stalling the CPU is acceptable.
+ *
+ * @param stream The FILE stream (unused, required by avr-libc FILE interface).
+ * @return The next available character as an unsigned char cast to int.
  */
 int uartGetCharBlocking(FILE *stream) {
     while (inputHead == inputTail) {
@@ -122,11 +135,14 @@ int uartGetCharBlocking(FILE *stream) {
     return uartGetChar(stream);
 }
 
-/* uartGetChar()
- * -------------
- * Non-blocking read from the input ring buffer. Returns the next available
- * character or -1 if the buffer is empty. Called by the FILE stream on
- * every scanf/getchar.
+/**
+ * @brief Non-blocking read from the input ring buffer.
+ *
+ * @details Called by the FILE stream on every scanf/getchar. Returns
+ *          immediately if no data is available.
+ *
+ * @param stream The FILE stream (unused, required by avr-libc FILE interface).
+ * @return The next available character, or -1 if the buffer is empty.
  */
 static int uartGetChar(FILE *stream) {
     (void)stream;
@@ -145,11 +161,13 @@ static int uartGetChar(FILE *stream) {
     return c;
 }
 
-/* ISR(USART0_UDRE_vect)
- * ---------------------
- * Fired when the UART data register is empty and ready for the next byte.
- * Writes the next character from the output ring buffer to UDR0. Disables
- * itself when the buffer is fully drained to avoid spurious interrupts.
+/**
+ * @brief Fired when the UART data register is empty and ready for the next
+ *        byte.
+ *
+ * @details Writes the next character from the output ring buffer to UDR0.
+ *          Disables itself when the buffer is fully drained to avoid spurious
+ *          interrupts.
  */
 ISR(USART0_UDRE_vect) {
     if (outputHead != outputTail) {
@@ -162,12 +180,12 @@ ISR(USART0_UDRE_vect) {
     }
 }
 
-/* ISR(USART0_RX_vect)
- * -------------------
- * Fired when a byte has been received and is ready in UDR0. Stores the
- * character in the input ring buffer. Carriage returns are converted to
- * newlines so line-oriented input works consistently regardless of the
- * terminal sending \r or \r\n.
+/**
+ * @brief Fired when a byte has been received and is ready in UDR0.
+ *
+ * @details Stores the character in the input ring buffer. Carriage returns are
+ *          converted to newlines so line-oriented input works consistently
+ *          regardless of the terminal sending \r or \r\n.
  */
 ISR(USART0_RX_vect) {
     char c = UDR0;

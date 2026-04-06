@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#define TESTING 1 // Remove for use with actual motors and not LEDs
+// #define TESTING 1 // Remove for use with actual motors and not LEDs
 
 #include "timers.h"
 #ifdef TESTING
@@ -111,13 +111,21 @@ static volatile uint8_t emf = 0;
 /* Main                                                                       */
 /* ========================================================================== */
 
-/* main()
- * ------
- * Entry point. Initialises the system tick, input capture, and peripheral
- * setup depending on build mode. In TESTING mode the serial port and LED
- * PWM are initialised and phases are stepped on a 1 second timer. In normal
- * mode the gate driver PWM, low side GPIO, and analog comparator are
- * initialised and the motor is driven from back-EMF zero crossings.
+/**
+ * @brief Entry point. Initialises peripherals and runs the main control loop.
+ *
+ * @details Initialises the system tick and input capture on both build targets.
+ *          In TESTING mode the serial port and LED PWM are initialised and
+ * phases are stepped on a 1 second timer. In normal mode the gate driver PWM,
+ *          low side GPIO, and analog comparator are initialised. Before
+ * entering the main loop the motor is held in an arm sequence -- the ESC waits
+ *          for a valid PWM signal and requires throttle to be at or below 5%
+ *          (50/1000) before allowing motor operation, matching standard ESC
+ *          arming behaviour. Once armed, phase 0 is set as the initial
+ *          commutation state. In the main loop the gate duty is updated from
+ *          the throttle input on each fresh pulse, and commutation advances on
+ *          each back-EMF zero crossing. A failsafe shuts down all outputs if
+ *          the PWM input signal is lost.
  */
 int main(void) {
     sei();
@@ -134,10 +142,24 @@ int main(void) {
     SETUP_LOW_SIDE();
     initTimer_gate_pwm();
     comparatorInit();
+
+    while (1) {
+        if (!pwmDataReady()) {
+            continue;
+        }
+
+        // Allow up to 5% throttle (50/1000) as deadband before arming
+        if (getThrottle() <= 50) {
+            break;
+        }
+    }
+
+    // Initial phase set
     phase0();
 #endif
 
     while (1) {
+        // Failsafe for lost input signal
         if (pwmSignalLost()) {
             shutdown();
             continue;
@@ -174,14 +196,15 @@ int main(void) {
 /* Safety                                                                     */
 /* ========================================================================== */
 
-/* shutdown()
- * ----------
- * Safely stops all motor drive outputs and resets commutation state.
- * In TESTING mode all LED outputs are cleared. In normal mode all high
- * side PWM outputs are disconnected from the timer, all low side GPIOs
- * are driven low, and the gate duty is set to zero. The emf and phase
- * flags are reset so the motor can be restarted cleanly from phase 0
- * once the PWM signal is restored.
+/**
+ * @brief Safely de-energises all motor drive outputs and resets commutation
+ * state.
+ *
+ * @details In TESTING mode all LED outputs are cleared. In normal mode all high
+ *          side PWM outputs are disconnected from the timer, all low side GPIOs
+ *          are driven low, and the gate duty is set to zero. The emf and phase
+ *          flags are reset so the motor can be restarted cleanly from phase 0
+ *          once the PWM signal is restored.
  */
 void shutdown(void) {
 #ifdef TESTING
@@ -205,12 +228,12 @@ void shutdown(void) {
 /* Commutation Phases                                                         */
 /* ========================================================================== */
 
-/* phase0()
- * --------
- * Commutation step 0: A High, B Low, C Floating.
- * In TESTING mode drives LEDs to visualise the step.
- * In normal mode connects A high side PWM, enables B low side GPIO,
- * and selects C phase back-EMF on the comparator mux.
+/**
+ * @brief Commutation step 0: A High, B Low, C Floating.
+ *
+ * @details In TESTING mode drives LEDs to visualise the step. In normal mode
+ *          connects A high side PWM, enables B low side GPIO, and selects C
+ *          phase back-EMF on the comparator mux.
  */
 void phase0(void) {
 #ifdef TESTING
@@ -223,12 +246,12 @@ void phase0(void) {
 #endif
 }
 
-/* phase1()
- * --------
- * Commutation step 1: A High, C Low, B Floating.
- * In TESTING mode drives LEDs to visualise the step.
- * In normal mode connects A high side PWM, enables C low side GPIO,
- * and selects B phase back-EMF on the comparator mux.
+/**
+ * @brief Commutation step 1: A High, C Low, B Floating.
+ *
+ * @details In TESTING mode drives LEDs to visualise the step. In normal mode
+ *          connects A high side PWM, enables C low side GPIO, and selects B
+ *          phase back-EMF on the comparator mux.
  */
 void phase1(void) {
 #ifdef TESTING
@@ -241,12 +264,12 @@ void phase1(void) {
 #endif
 }
 
-/* phase2()
- * --------
- * Commutation step 2: B High, C Low, A Floating.
- * In TESTING mode drives LEDs to visualise the step.
- * In normal mode connects B high side PWM, enables C low side GPIO,
- * and selects A phase back-EMF on the comparator mux.
+/**
+ * @brief Commutation step 2: B High, C Low, A Floating.
+ *
+ * @details In TESTING mode drives LEDs to visualise the step. In normal mode
+ *          connects B high side PWM, enables C low side GPIO, and selects A
+ *          phase back-EMF on the comparator mux.
  */
 void phase2(void) {
 #ifdef TESTING
@@ -259,12 +282,12 @@ void phase2(void) {
 #endif
 }
 
-/* phase3()
- * --------
- * Commutation step 3: B High, A Low, C Floating.
- * In TESTING mode drives LEDs to visualise the step.
- * In normal mode connects B high side PWM, enables A low side GPIO,
- * and selects C phase back-EMF on the comparator mux.
+/**
+ * @brief Commutation step 3: B High, A Low, C Floating.
+ *
+ * @details In TESTING mode drives LEDs to visualise the step. In normal mode
+ *          connects B high side PWM, enables A low side GPIO, and selects C
+ *          phase back-EMF on the comparator mux.
  */
 void phase3(void) {
 #ifdef TESTING
@@ -277,12 +300,12 @@ void phase3(void) {
 #endif
 }
 
-/* phase4()
- * --------
- * Commutation step 4: C High, A Low, B Floating.
- * In TESTING mode drives LEDs to visualise the step.
- * In normal mode connects C high side PWM, enables A low side GPIO,
- * and selects B phase back-EMF on the comparator mux.
+/**
+ * @brief Commutation step 4: C High, A Low, B Floating.
+ *
+ * @details In TESTING mode drives LEDs to visualise the step. In normal mode
+ *          connects C high side PWM, enables A low side GPIO, and selects B
+ *          phase back-EMF on the comparator mux.
  */
 void phase4(void) {
 #ifdef TESTING
@@ -295,12 +318,12 @@ void phase4(void) {
 #endif
 }
 
-/* phase5()
- * --------
- * Commutation step 5: C High, B Low, A Floating.
- * In TESTING mode drives LEDs to visualise the step.
- * In normal mode connects C high side PWM, enables B low side GPIO,
- * and selects A phase back-EMF on the comparator mux.
+/**
+ * @brief Commutation step 5: C High, B Low, A Floating.
+ *
+ * @details In TESTING mode drives LEDs to visualise the step. In normal mode
+ *          connects C high side PWM, enables B low side GPIO, and selects A
+ *          phase back-EMF on the comparator mux.
  */
 void phase5(void) {
 #ifdef TESTING
@@ -317,21 +340,22 @@ void phase5(void) {
 /* Commutation Control                                                        */
 /* ========================================================================== */
 
-/* toggle_phase()
- * --------------
- * Advances the commutation phase counter by one step wrapping
- * back to 0 after step 5.
+/**
+ * @brief Advances the commutation phase counter by one step.
+ *
+ * @details Increments the phase counter and wraps back to 0 after step 5.
  */
 void toggle_phase(void) {
     phase = (phase + 1) % 6;
 }
 
-/* run_phase()
- * -----------
- * Advances to the next commutation step and drives the appropriate
- * outputs for that step. In normal mode toggle_phase() is called here
- * on each back-EMF zero crossing. Clears the emf flag after switching
- * so the next zero crossing can be detected.
+/**
+ * @brief Advances to the next commutation step and drives the appropriate
+ * outputs.
+ *
+ * @details In normal mode calls toggle_phase() to advance the step counter
+ * before driving outputs. Clears the emf flag after switching so the next zero
+ * crossing can be detected.
  */
 void run_phase(void) {
 #ifndef TESTING
@@ -365,15 +389,15 @@ void run_phase(void) {
 /* Comparator                                                                 */
 /* ========================================================================== */
 
-/* comparatorInit()
- * ----------------
- * Configures the analog comparator for back-EMF zero crossing detection.
- * AIN0 (PD6) is the positive input connected to the motor neutral point.
- * The ADC mux is connected to the comparator negative input via ACME,
- * allowing PC0/PC1/PC2 (ADC0/1/2) to be selected per commutation step.
- * Interrupt fires on output toggle to catch zero crossings in both
- * directions. ADC is disabled to allow the mux to be used by the
- * comparator. Starts monitoring phase C (floating in step 0).
+/**
+ * @brief Configures the analog comparator for back-EMF zero crossing detection.
+ *
+ * @details AIN0 (PD6) is the positive input connected to the motor neutral
+ * point. The ADC mux is connected to the comparator negative input via ACME,
+ *          allowing PC0/PC1/PC2 (ADC0/1/2) to be selected per commutation step.
+ *          The interrupt fires on output toggle to catch zero crossings in both
+ *          directions. The ADC is disabled to allow the mux to be used by the
+ *          comparator. Starts monitoring phase C which is floating in step 0.
  */
 void comparatorInit(void) {
     ADCSRB = (1 << ACME);   // Connect ADC mux to comparator negative input
@@ -392,11 +416,12 @@ void comparatorInit(void) {
 /* ISR Functions                                                              */
 /* ========================================================================== */
 
-/* ISR(ANALOG_COMP_vect)
- * ---------------------
- * Fired on each back-EMF zero crossing detected by the analog comparator.
- * Sets the emf flag for the main loop to advance the commutation step.
- * Kept minimal to avoid re-triggering from switching noise.
+/**
+ * @brief Fired on each back-EMF zero crossing detected by the analog
+ * comparator.
+ *
+ * @details Sets the emf flag for the main loop to advance the commutation step.
+ *          Kept minimal to avoid re-triggering from switching noise.
  */
 ISR(ANALOG_COMP_vect) {
     emf = 1;
