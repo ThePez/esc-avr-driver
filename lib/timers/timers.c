@@ -8,6 +8,7 @@
 
 #include <avr/interrupt.h>
 #include <avr/io.h>
+#include <avr/sfr_defs.h>
 #include <stdint.h>
 
 /* ========================================================================== */
@@ -22,15 +23,17 @@
 
 // Timer3/4 phase correct PWM: 16MHz / (2 * 1 * 400) = 20kHz
 #define PWM_TOP 400
+#define PWM_TIMEOUT 100 // ms
 
 /* ========================================================================== */
 /* Input Capture State                                                        */
 /* ========================================================================== */
 
-static volatile uint16_t risingEdgeTime;
-static volatile uint16_t pulseWidth;
-static volatile uint16_t period;
-static volatile uint8_t newDataReady;
+static volatile uint32_t lastPulseTime = 0;
+static volatile uint16_t risingEdgeTime = 0;
+static volatile uint16_t pulseWidth = 0;
+static volatile uint16_t period = 0;
+static volatile uint8_t newDataReady = 0;
 
 /* ========================================================================== */
 /* System Tick                                                                */
@@ -282,6 +285,23 @@ void set_gate_duty(uint16_t throttlePerMille) {
 /* Input Capture Getters                                                      */
 /* ========================================================================== */
 
+/* pwmSignalLost()
+ * ---------------
+ * Returns 1 if the pwm input signal hasn't been recieved within the last
+ * 100 steps of systemTicks (ie 100ms), else returns 0.
+ */
+uint8_t pwmSignalLost(void) {
+    uint8_t interrupts = bit_is_set(SREG, SREG_I);
+    cli();
+    uint32_t last = lastPulseTime;
+    uint32_t current = systemTicks;
+    if (interrupts) {
+        sei();
+    }
+
+    return (current - last) > PWM_TIMEOUT;
+}
+
 /* pwmDataReady()
  * --------------
  * Returns non-zero if a complete pulse width measurement is available.
@@ -444,5 +464,6 @@ ISR(TIMER1_CAPT_vect) {
         pulseWidth = captured - risingEdgeTime;
         TCCR1B |= (1 << ICES1);
         newDataReady = 1;
+        lastPulseTime = systemTicks; // Time stamp the Pulse
     }
 }

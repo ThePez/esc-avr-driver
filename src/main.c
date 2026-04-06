@@ -4,17 +4,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "serialio.h"
-#include "timers.h"
+// #define TESTING 1 // Remove for use with actual motors and not LEDs
 
-#include <stdint.h>
+#include "timers.h"
+#ifdef TESTING
+#include "serialio.h"
 #include <stdio.h>
+#endif
+#include <stdint.h>
+
+// AVR Headers
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>
 #include <avr/io.h>
 #include <util/delay.h>
-
-#define TESTING 1 // Remove for use with actual motors and not LEDs
 
 // Pins used
 #define MOTOR_NEUTRAL PD6                   // Motor COMON
@@ -75,6 +78,7 @@
 #define RESET_C_HIGH_PHASE() (DDRD &= ~(1 << C_HIGH_PIN))
 #endif
 
+void shutdown(void);
 void phase0(void);
 void phase1(void);
 void phase2(void);
@@ -101,12 +105,18 @@ int main(void) {
     printf_P(PSTR("System ready!\n"));
     uint32_t prev = getSysTick();
 #else
+    SETUP_LOW_SIDE();
     initTimer_gate_pwm();
     comparatorInit();
     phase0();
 #endif
 
     while (1) {
+        if (pwmSignalLost()) {
+            shutdown();
+            continue;
+        }
+
 #ifdef TESTING
         if (getSysTick() - prev > 1000) {
             toggle_phase();
@@ -119,9 +129,14 @@ int main(void) {
         set_led_duty(getThrottle());
         run_phase();
 #else
-        set_gate_duty(getThrottle());
+        // Update Gate PWM if Throttle Input is available
+        if (pwmDataReady()) {
+            set_gate_duty(getThrottle());
+        }
+        
+        // Has a Zero crossing occured from the Back-EMF
         if (emf) {
-            run_phase();
+            run_phase(); // Will progress to next phase
         }
 #endif
     }
@@ -129,11 +144,49 @@ int main(void) {
     return 0;
 }
 
+/* shutdown()
+ * ----------
+ * Safely stops all motor drive outputs and resets commutation state.
+ * In TESTING mode all LED outputs are cleared. In normal mode all high
+ * side PWM outputs are disconnected from the timer, all low side GPIOs
+ * are driven low, and the gate duty is set to zero. The emf and phase
+ * flags are reset so the motor can be restarted cleanly from phase 0
+ * once the PWM signal is restored.
+ */
+void shutdown(void) {
+#ifdef TESTING
+    // Turn off all LEDs
+    PORTC &= ~((1 << PC0) | (1 << PC1) | (1 << PC2) | (1 << PC3) | (1 << PC4) |
+               (1 << PC5));
+#else
+    // Disconnect all high sides and turn off all low Sides
+    RESET_A_HIGH_PHASE();
+    RESET_B_HIGH_PHASE();
+    RESET_C_HIGH_PHASE();
+    RESET_A_LOW_PHASE();
+    RESET_B_LOW_PHASE();
+    RESET_C_LOW_PHASE();
+    // Set Gate PWM to 0
+    set_gate_duty(0);
+    clearPwmDataReady();
+#endif
+    // Reset flags
+    emf = 0;
+    phase = 0;
+}
+
+/* phase0()
+ * --------
+ * Commutation step 0: A High, B Low, C Floating.
+ * In TESTING mode drives LEDs to visualise the step.
+ * In normal mode connects A high side PWM, enables B low side GPIO,
+ * and selects C phase back-EMF on the comparator mux.
+ */
 void phase0(void) {
 #ifdef TESTING
     // A High, B Low
-    PORTC |= (1 << PC0) | (1 << PC3);
     PORTC &= ~((1 << PC1) | (1 << PC2) | (1 << PC4) | (1 << PC5));
+    PORTC |= (1 << PC0) | (1 << PC3);
 #else
     // A High, B Low, C Floating
     SET_A_HIGH_PHASE();
@@ -143,11 +196,18 @@ void phase0(void) {
 #endif
 }
 
+/* phase1()
+ * --------
+ * Commutation step 1: A High, C Low, B Floating.
+ * In TESTING mode drives LEDs to visualise the step.
+ * In normal mode connects A high side PWM, enables C low side GPIO,
+ * and selects B phase back-EMF on the comparator mux.
+ */
 void phase1(void) {
 #ifdef TESTING
     // A High, C Low
-    PORTC |= (1 << PC0) | (1 << PC5);
     PORTC &= ~((1 << PC1) | (1 << PC2) | (1 << PC3) | (1 << PC4));
+    PORTC |= (1 << PC0) | (1 << PC5);
 #else
     // A High, C Low, B Floating
     SET_A_HIGH_PHASE();
@@ -157,11 +217,18 @@ void phase1(void) {
 #endif
 }
 
+/* phase2()
+ * --------
+ * Commutation step 2: B High, C Low, A Floating.
+ * In TESTING mode drives LEDs to visualise the step.
+ * In normal mode connects B high side PWM, enables C low side GPIO,
+ * and selects A phase back-EMF on the comparator mux.
+ */
 void phase2(void) {
 #ifdef TESTING
     // B High, C Low
-    PORTC |= (1 << PC2) | (1 << PC5);
     PORTC &= ~((1 << PC0) | (1 << PC1) | (1 << PC3) | (1 << PC4));
+    PORTC |= (1 << PC2) | (1 << PC5);
 #else
     // B High, C Low, A Floating
     SET_B_HIGH_PHASE();
@@ -171,11 +238,18 @@ void phase2(void) {
 #endif
 }
 
+/* phase3()
+ * --------
+ * Commutation step 3: B High, A Low, C Floating.
+ * In TESTING mode drives LEDs to visualise the step.
+ * In normal mode connects B high side PWM, enables A low side GPIO,
+ * and selects C phase back-EMF on the comparator mux.
+ */
 void phase3(void) {
 #ifdef TESTING
     // B High, A Low
-    PORTC |= (1 << PC2) | (1 << PC1);
     PORTC &= ~((1 << PC0) | (1 << PC3) | (1 << PC4) | (1 << PC5));
+    PORTC |= (1 << PC2) | (1 << PC1);
 #else
     // B High, A Low, C Floating
     SET_B_HIGH_PHASE();
@@ -185,11 +259,18 @@ void phase3(void) {
 #endif
 }
 
+/* phase4()
+ * --------
+ * Commutation step 4: C High, A Low, B Floating.
+ * In TESTING mode drives LEDs to visualise the step.
+ * In normal mode connects C high side PWM, enables A low side GPIO,
+ * and selects B phase back-EMF on the comparator mux.
+ */
 void phase4(void) {
 #ifdef TESTING
     // C High, A Low
-    PORTC |= (1 << PC4) | (1 << PC1);
     PORTC &= ~((1 << PC0) | (1 << PC2) | (1 << PC3) | (1 << PC5));
+    PORTC |= (1 << PC4) | (1 << PC1);
 #else
     // C High, A Low, B Floating
     SET_C_HIGH_PHASE();
@@ -199,11 +280,18 @@ void phase4(void) {
 #endif
 }
 
+/* phase5()
+ * --------
+ * Commutation step 5: C High, B Low, A Floating.
+ * In TESTING mode drives LEDs to visualise the step.
+ * In normal mode connects C high side PWM, enables B low side GPIO,
+ * and selects A phase back-EMF on the comparator mux.
+ */
 void phase5(void) {
 #ifdef TESTING
     // C High, B Low
-    PORTC |= (1 << PC4) | (1 << PC3);
     PORTC &= ~((1 << PC0) | (1 << PC1) | (1 << PC2) | (1 << PC5));
+    PORTC |= (1 << PC4) | (1 << PC3);
 #else
     // C High, B Low, A Floating
     SET_C_HIGH_PHASE();

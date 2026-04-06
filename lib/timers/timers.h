@@ -27,6 +27,7 @@ void set_gate_duty(uint16_t throttlePerMille);
 
 ////////////////////////////// Input Capture Getters //////////////////////////
 
+uint8_t pwmSignalLost(void);
 uint8_t pwmDataReady(void);
 void clearPwmDataReady(void);
 uint16_t getPulseWidth(void);
