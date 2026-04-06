@@ -14,7 +14,7 @@
 void initSystemTick(void);
 void initTimer1_inputCapture(void);
 void initTimer2_led_pwm(void);
-void initTimer3_get_pwm(void);
+void initTimer_gate_pwm(void);
 
 ////////////////////////////// Disable Functions //////////////////////////////
 

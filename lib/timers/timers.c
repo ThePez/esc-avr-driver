@@ -132,9 +132,7 @@ void initTimer_gate_pwm(void) {
     uint8_t interrupts = bit_is_set(SREG, SREG_I);
     cli();
 
-    // OC3A (PD0), OC3B (PD2), OC4A (PD1) as outputs
-    DDRD |= (1 << PD0) | (1 << PD1) | (1 << PD2);
-
+    // OC3A (PD0), OC3B (PD2), OC4A (PD1) as outputs (done in main)
     // Phase correct PWM mode 10 (TOP = ICR3/4), non-inverting outputs
     TCCR3A = (1 << COM3A1) | (1 << COM3B1) | (1 << WGM31);
     TCCR4A = (1 << COM4A1) | (1 << WGM41);
