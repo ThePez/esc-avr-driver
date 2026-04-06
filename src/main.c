@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-// #define TESTING 1 // Remove for use with actual motors and not LEDs
+#define TESTING 1 // Remove for use with actual motors and not LEDs
 
 #include "timers.h"
 #ifdef TESTING
@@ -19,18 +19,25 @@
 #include <avr/io.h>
 #include <util/delay.h>
 
-// Pins used
-#define MOTOR_NEUTRAL PD6                   // Motor COMON
-#define A_EMF_EN()    (ADMUX = (0 << MUX0)) // 0x00, PC0
-#define B_EMF_EN()    (ADMUX = (1 << MUX0)) // 0x01, PC1
-#define C_EMF_EN()    (ADMUX = (1 << MUX1)) // 0x02, PC2
-#define A_HIGH_PIN    PD0                   // A Gate High Side
-#define B_HIGH_PIN    PD1                   // B Gate High Side
-#define C_HIGH_PIN    PD2                   // C Gate High Side
-#define A_LOW_PIN     PC3                   // A Gate Low Side
-#define B_LOW_PIN     PC4                   // B Gate Low Side
-#define C_LOW_PIN     PC5                   // C Gate Low Side
-#define SIGNAL_INPUT  PB0                   // Input Speed PWM Signal
+/* ========================================================================== */
+/* Pin Definitions                                                            */
+/* ========================================================================== */
+
+#define MOTOR_NEUTRAL PD6                   // Motor common / star point
+#define A_EMF_EN()    (ADMUX = (0 << MUX0)) // 0x00, PC0 -- Phase A back-EMF
+#define B_EMF_EN()    (ADMUX = (1 << MUX0)) // 0x01, PC1 -- Phase B back-EMF
+#define C_EMF_EN()    (ADMUX = (1 << MUX1)) // 0x02, PC2 -- Phase C back-EMF
+#define A_HIGH_PIN    PD0                   // A gate high side
+#define B_HIGH_PIN    PD1                   // B gate high side
+#define C_HIGH_PIN    PD2                   // C gate high side
+#define A_LOW_PIN     PC3                   // A gate low side
+#define B_LOW_PIN     PC4                   // B gate low side
+#define C_LOW_PIN     PC5                   // C gate low side
+#define SIGNAL_INPUT  PB0                   // Input speed PWM signal
+
+/* ========================================================================== */
+/* Macros                                                                     */
+/* ========================================================================== */
 
 #ifdef TESTING
 // Set PC0 to PC5 as outputs for LED testing
@@ -42,7 +49,7 @@
                    (1 << PC4) | (1 << PC5));                                   \
     } while (0)
 #else
-// Proper Motor Code
+// Set low side GPIO pins as outputs, all initially off
 #define SETUP_LOW_SIDE()                                                       \
     do {                                                                       \
         DDRC |= (1 << A_LOW_PIN) | (1 << B_LOW_PIN) | (1 << C_LOW_PIN);        \
@@ -78,6 +85,10 @@
 #define RESET_C_HIGH_PHASE() (DDRD &= ~(1 << C_HIGH_PIN))
 #endif
 
+/* ========================================================================== */
+/* Function Prototypes                                                        */
+/* ========================================================================== */
+
 void shutdown(void);
 void phase0(void);
 void phase1(void);
@@ -89,11 +100,26 @@ void run_phase(void);
 void toggle_phase(void);
 void comparatorInit(void);
 
-static volatile uint8_t phase = 0;
+/* ========================================================================== */
+/* State Variables                                                            */
+/* ========================================================================== */
+
+static uint8_t phase = 0;
 static volatile uint8_t emf = 0;
 
+/* ========================================================================== */
+/* Main                                                                       */
+/* ========================================================================== */
+
+/* main()
+ * ------
+ * Entry point. Initialises the system tick, input capture, and peripheral
+ * setup depending on build mode. In TESTING mode the serial port and LED
+ * PWM are initialised and phases are stepped on a 1 second timer. In normal
+ * mode the gate driver PWM, low side GPIO, and analog comparator are
+ * initialised and the motor is driven from back-EMF zero crossings.
+ */
 int main(void) {
-    // Enable Interrupts
     sei();
     initSystemTick();
     initTimer1_inputCapture();
@@ -129,12 +155,12 @@ int main(void) {
         set_led_duty(getThrottle());
         run_phase();
 #else
-        // Update Gate PWM if Throttle Input is available
+        // Update gate PWM if throttle input is available
         if (pwmDataReady()) {
             set_gate_duty(getThrottle());
         }
-        
-        // Has a Zero crossing occured from the Back-EMF
+
+        // Has a zero crossing occurred from the back-EMF
         if (emf) {
             run_phase(); // Will progress to next phase
         }
@@ -143,6 +169,10 @@ int main(void) {
 
     return 0;
 }
+
+/* ========================================================================== */
+/* Safety                                                                     */
+/* ========================================================================== */
 
 /* shutdown()
  * ----------
@@ -155,25 +185,25 @@ int main(void) {
  */
 void shutdown(void) {
 #ifdef TESTING
-    // Turn off all LEDs
     PORTC &= ~((1 << PC0) | (1 << PC1) | (1 << PC2) | (1 << PC3) | (1 << PC4) |
                (1 << PC5));
 #else
-    // Disconnect all high sides and turn off all low Sides
     RESET_A_HIGH_PHASE();
     RESET_B_HIGH_PHASE();
     RESET_C_HIGH_PHASE();
     RESET_A_LOW_PHASE();
     RESET_B_LOW_PHASE();
     RESET_C_LOW_PHASE();
-    // Set Gate PWM to 0
     set_gate_duty(0);
     clearPwmDataReady();
 #endif
-    // Reset flags
     emf = 0;
     phase = 0;
 }
+
+/* ========================================================================== */
+/* Commutation Phases                                                         */
+/* ========================================================================== */
 
 /* phase0()
  * --------
@@ -184,15 +214,12 @@ void shutdown(void) {
  */
 void phase0(void) {
 #ifdef TESTING
-    // A High, B Low
     PORTC &= ~((1 << PC1) | (1 << PC2) | (1 << PC4) | (1 << PC5));
     PORTC |= (1 << PC0) | (1 << PC3);
 #else
-    // A High, B Low, C Floating
     SET_A_HIGH_PHASE();
     SET_B_LOW_PHASE();
     C_EMF_EN();
-    // Disconnect all other gpio lows and PWM highs
 #endif
 }
 
@@ -205,15 +232,12 @@ void phase0(void) {
  */
 void phase1(void) {
 #ifdef TESTING
-    // A High, C Low
     PORTC &= ~((1 << PC1) | (1 << PC2) | (1 << PC3) | (1 << PC4));
     PORTC |= (1 << PC0) | (1 << PC5);
 #else
-    // A High, C Low, B Floating
     SET_A_HIGH_PHASE();
     SET_C_LOW_PHASE();
     B_EMF_EN();
-    // Disconnect all other gpio lows and PWM highs
 #endif
 }
 
@@ -226,15 +250,12 @@ void phase1(void) {
  */
 void phase2(void) {
 #ifdef TESTING
-    // B High, C Low
     PORTC &= ~((1 << PC0) | (1 << PC1) | (1 << PC3) | (1 << PC4));
     PORTC |= (1 << PC2) | (1 << PC5);
 #else
-    // B High, C Low, A Floating
     SET_B_HIGH_PHASE();
     SET_C_LOW_PHASE();
     A_EMF_EN();
-    // Disconnect all other gpio lows and PWM highs
 #endif
 }
 
@@ -247,15 +268,12 @@ void phase2(void) {
  */
 void phase3(void) {
 #ifdef TESTING
-    // B High, A Low
     PORTC &= ~((1 << PC0) | (1 << PC3) | (1 << PC4) | (1 << PC5));
     PORTC |= (1 << PC2) | (1 << PC1);
 #else
-    // B High, A Low, C Floating
     SET_B_HIGH_PHASE();
     SET_A_LOW_PHASE();
     C_EMF_EN();
-    // Disconnect all other gpio lows and PWM highs
 #endif
 }
 
@@ -268,15 +286,12 @@ void phase3(void) {
  */
 void phase4(void) {
 #ifdef TESTING
-    // C High, A Low
     PORTC &= ~((1 << PC0) | (1 << PC2) | (1 << PC3) | (1 << PC5));
     PORTC |= (1 << PC4) | (1 << PC1);
 #else
-    // C High, A Low, B Floating
     SET_C_HIGH_PHASE();
     SET_A_LOW_PHASE();
     B_EMF_EN();
-    // Disconnect all other gpio lows and PWM highs
 #endif
 }
 
@@ -289,17 +304,18 @@ void phase4(void) {
  */
 void phase5(void) {
 #ifdef TESTING
-    // C High, B Low
     PORTC &= ~((1 << PC0) | (1 << PC1) | (1 << PC2) | (1 << PC5));
     PORTC |= (1 << PC4) | (1 << PC3);
 #else
-    // C High, B Low, A Floating
     SET_C_HIGH_PHASE();
     SET_B_LOW_PHASE();
     A_EMF_EN();
-    // Disconnect all other gpio lows and PWM highs
 #endif
 }
+
+/* ========================================================================== */
+/* Commutation Control                                                        */
+/* ========================================================================== */
 
 /* toggle_phase()
  * --------------
@@ -313,8 +329,9 @@ void toggle_phase(void) {
 /* run_phase()
  * -----------
  * Advances to the next commutation step and drives the appropriate
- * outputs for that step. Clears the emf flag after switching so the
- * next zero crossing can be detected.
+ * outputs for that step. In normal mode toggle_phase() is called here
+ * on each back-EMF zero crossing. Clears the emf flag after switching
+ * so the next zero crossing can be detected.
  */
 void run_phase(void) {
 #ifndef TESTING
@@ -341,9 +358,12 @@ void run_phase(void) {
         break;
     }
 
-    // Clear emf flag, ready for next Comparator ISR
     emf = 0;
 }
+
+/* ========================================================================== */
+/* Comparator                                                                 */
+/* ========================================================================== */
 
 /* comparatorInit()
  * ----------------
@@ -359,16 +379,18 @@ void comparatorInit(void) {
     ADCSRB = (1 << ACME);   // Connect ADC mux to comparator negative input
     ADCSRA &= ~(1 << ADEN); // Disable ADC so mux is available to comparator
     ACSR = (1 << ACIE);     // Enable comparator interrupt on output toggle
-    // Both edges enabled for interrupt ACIS1 = 0, ACIS0 = 0
+    // ACIS1:ACIS0 = 0:0 -- interrupt on both edges
 
-    // PD6 (AIN0) = motor neutral point (positive input)
-    DDRD &= ~(1 << MOTOR_NEUTRAL);
-    // PC0-2 are floating points (negative input)
+    DDRD &= ~(1 << MOTOR_NEUTRAL); // PD6 (AIN0) as input -- motor neutral point
+    // PC0-2 as inputs -- back-EMF
     DDRC &= ~((1 << PC0) | (1 << PC1) | (1 << PC2));
 
-    // Set MUX to use C phase
     C_EMF_EN(); // Phase 0 has C floating so start monitoring C
 }
+
+/* ========================================================================== */
+/* ISR Functions                                                              */
+/* ========================================================================== */
 
 /* ISR(ANALOG_COMP_vect)
  * ---------------------
