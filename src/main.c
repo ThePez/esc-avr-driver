@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-// #define TESTING 1 // Remove for use with actual motors and not LEDs
+#define TESTING 1 // Remove for use with actual motors and not LEDs
 
 #include "timers.h"
 #ifdef TESTING
@@ -18,6 +18,7 @@
 #include <avr/pgmspace.h>
 #include <avr/io.h>
 #include <util/delay.h>
+#include <avr/wdt.h>
 
 /* ========================================================================== */
 /* Pin Definitions                                                            */
@@ -85,11 +86,28 @@
 #define RESET_C_HIGH_PHASE() (DDRD &= ~(1 << C_HIGH_PIN))
 #endif
 
+#ifdef TESTING
+// starting step interval for LED test
+#define STARTUP_INTERVAL_START_MS 800
+// ending step interval for LED test
+#define STARTUP_INTERVAL_END_MS   8
+#define STARTUP_REDUCTION         20
+#else
+// starting step interval for motor
+#define STARTUP_INTERVAL_START_MS 50
+// handoff to back-EMF at this interval
+#define STARTUP_INTERVAL_END_MS   8
+#define STARTUP_REDUCTION         1
+#endif
+
+#define STARTUP_STEPS_PER_RAMP 2 // steps between each interval reduction
+
 /* ========================================================================== */
 /* Function Prototypes                                                        */
 /* ========================================================================== */
 
 void shutdown(void);
+void startupSequence(void);
 void phase0(void);
 void phase1(void);
 void phase2(void);
@@ -129,6 +147,8 @@ static volatile uint8_t emf = 0;
  */
 int main(void) {
     sei();
+    // Enable watchdog timer
+    wdt_enable(WDTO_250MS);
     initSystemTick();
     initTimer1_inputCapture();
 
@@ -141,9 +161,11 @@ int main(void) {
 #else
     SETUP_LOW_SIDE();
     initTimer_gate_pwm();
-    comparatorInit();
+#endif
 
+    // Arming loop
     while (1) {
+        wdt_reset();
         if (!pwmDataReady()) {
             continue;
         }
@@ -154,11 +176,18 @@ int main(void) {
         }
     }
 
-    // Initial phase set
-    phase0();
+    // Open Loop startup sequence
+    startupSequence();
+#ifndef TESTING
+    // Init the comparator now the motor is running
+    comparatorInit();
+    // Run the first phase to keep the motor going ?? Might not need this....
+    run_phase();
 #endif
 
+    // Main Cyclic Loop
     while (1) {
+        wdt_reset();
         // Failsafe for lost input signal
         if (pwmSignalLost()) {
             shutdown();
@@ -166,11 +195,11 @@ int main(void) {
         }
 
 #ifdef TESTING
-        if (getSysTick() - prev > 1000) {
+        if (getSysTick() - prev > STARTUP_INTERVAL_END_MS) {
             toggle_phase();
-            printf_P(PSTR("PW: %uus Throttle: %u\n"), getPulseWidth(),
-                     getThrottle());
-            printf_P(PSTR("Phase: %d\n"), phase + 1);
+            // printf_P(PSTR("PW: %uus Throttle: %u\n"), getPulseWidth(),
+            //          getThrottle());
+            // printf_P(PSTR("Phase: %d\n"), phase + 1);
             prev = getSysTick();
         }
 
@@ -222,6 +251,61 @@ void shutdown(void) {
 #endif
     emf = 0;
     phase = 0;
+}
+
+/* ========================================================================== */
+/* Startup                                                                    */
+/* ========================================================================== */
+
+/**
+ * @brief Runs an open loop accelerating commutation sequence to spin the motor
+ *        up from standstill before handing control to back-EMF zero crossing.
+ *
+ * @details Steps through the 6-phase commutation sequence repeatedly, starting
+ *          at STARTUP_INTERVAL_START_MS per step and reducing the interval by
+ *          1ms every STARTUP_STEPS_PER_RAMP steps until STARTUP_INTERVAL_END_MS
+ *          is reached. In TESTING mode the LED sequence is visible and
+ *          intervals are much longer for visual verification. In normal mode
+ *          the function returns once the motor is spinning fast enough for
+ *          back-EMF detection. The watchdog is reset on each step to prevent a
+ *          reset during startup.
+ */
+void startupSequence(void) {
+    uint8_t stepCount = 0;
+    uint32_t interval = STARTUP_INTERVAL_START_MS;
+#ifdef TESTING
+    printf_P(PSTR("Startup Running\n"));
+#endif
+    while (interval > STARTUP_INTERVAL_END_MS) {
+        // Failsafe -- abort startup if signal is lost
+        if (pwmSignalLost()) {
+            shutdown();
+            return;
+        }
+
+        wdt_reset();
+        run_phase();
+#ifdef TESTING
+        // printf_P(PSTR("Startup Running phase %d, interval %lu\n"), phase,
+        //          interval);
+        toggle_phase();
+#endif
+
+        uint32_t start = getSysTick();
+        while (getSysTick() - start < interval) {
+            wdt_reset();
+        }
+
+        stepCount++;
+        if (stepCount >= STARTUP_STEPS_PER_RAMP) {
+            stepCount = 0;
+            interval -= STARTUP_REDUCTION;
+        }
+    }
+
+#ifdef TESTING
+    printf_P(PSTR("Startup Finished\n"));
+#endif
 }
 
 /* ========================================================================== */
