@@ -4,9 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#define TESTING 1 // Remove for use with actual motors and not LEDs
+// #define TESTING 1 // Remove for use with actual motors and not LEDs
 
 #include "timers.h"
+#include "drv8305.h"
 #ifdef TESTING
 #include "serialio.h"
 #include <stdio.h>
@@ -35,6 +36,9 @@
 #define B_LOW_PIN     PC4                   // B gate low side
 #define C_LOW_PIN     PC5                   // C gate low side
 #define SIGNAL_INPUT  PB0                   // Input speed PWM signal
+#define SPI0_MOSI     PB3
+#define SPI0_MISO     PB3
+#define SPI0_CLK      PB5
 
 /* ========================================================================== */
 /* Macros                                                                     */
@@ -151,7 +155,7 @@ int main(void) {
     wdt_enable(WDTO_250MS);
     initSystemTick();
     initTimer1_inputCapture();
-
+    drv8305SpiInit();
 #ifdef TESTING
     initSerialComs();
     initTimer2_led_pwm();
