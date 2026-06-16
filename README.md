@@ -154,7 +154,21 @@ Timer1 input capture measures both edges of the incoming RC PWM signal on PB0. R
 
 The SPI driver ([lib/drv8305/](lib/drv8305/)) is written and compiles, but has not yet been tested on hardware and is not integrated into the motor control loop. `drv8305SpiInit()` is called at startup to configure the SPI peripheral, but no register reads or writes are performed beyond that.
 
-When integrated, the interface will operate at SPI mode 1 (CPOL=0, CPHA=1), MSB first, fosc/8 = 2 MHz, with chip-select on PB2 (active low). Frames are 16 bits wide: bit 15 is the read/write flag, bits 14:11 are the 4-bit register address, and bits 10:0 are the 11-bit data payload. A read requires two transactions — the first sends the address, the second clocks out the response.
+The SPI interface operates at SPI mode 1 (CPOL=0, CPHA=1), MSB first, fosc/8 = 2 MHz, with chip-select on PB2 (active low). Frames are 16 bits wide: bit 15 is the read/write flag, bits 14:11 are the 4-bit register address, and bits 10:0 are the 11-bit data payload. A read requires two transactions — the first sends the address, the second clocks out the response.
+
+#### Planned integration and simplifications
+
+The DRV8305 is a fully integrated three-phase gate driver. Integrating it properly would allow several simplifications over the current discrete approach:
+
+**Replace the three IR2104 half-bridge drivers with one IC.** Currently each phase needs its own IR2104 plus a bootstrap capacitor for the high-side drive. The DRV8305 integrates all six gate drivers (3 high-side, 3 low-side) with internal bootstrap diodes, reducing component count and PCB area significantly.
+
+**Reduce the number of AVR PWM channels needed.** The current design uses three hardware PWM outputs (Timer3 OC3A/OC3B and Timer4 OC4A) — one per high-side switch. With the DRV8305, all three INH inputs could be tied to a single PWM signal, and commutation would be controlled solely by toggling the three INL (low-side enable) GPIO lines. Only one timer output would be needed for speed control, freeing Timer4 entirely and eliminating the DDR bit trick currently used to connect and disconnect the OC3x/OC4x pins from their phases.
+
+**Automatic dead-time insertion.** The DRV8305 enforces a programmable dead-time between a high-side and low-side gate signal for the same phase, preventing shoot-through without any software timing constraints. The current discrete approach relies on the IR2104's fixed internal dead-time.
+
+**Built-in protection.** The DRV8305 provides overcurrent protection via internal current sense amplifiers, overtemperature shutdown, and undervoltage lockout — features that would otherwise require additional discrete sensing and comparator circuitry.
+
+**SPI-configurable gate drive current.** Gate drive source and sink currents are programmable via SPI registers, allowing the switching speed (and therefore switching losses vs. EMI trade-off) to be tuned in software rather than by changing gate resistor values.
 
 ### Serial I/O (TESTING mode)
 
