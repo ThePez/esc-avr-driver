@@ -106,12 +106,12 @@ static int uartPutChar(char character, FILE *stream) {
         uartPutChar('\r', stream);
     }
 
-    uint8_t interruptsWereEnabled = bit_is_set(SREG, SREG_I);
+    uint8_t interrupts = bit_is_set(SREG, SREG_I);
     cli();
     outputBuffer[outputHead] = character;
     outputHead = (outputHead + 1) % OUTPUT_BUFFER_SIZE; // Wrap when end reached
     UCSR0B |= (1 << UDRIE0);                            // Enable send interrupt
-    if (interruptsWereEnabled) {
+    if (interrupts) {
         sei();
     }
 
@@ -150,11 +150,11 @@ static int uartGetChar(FILE *stream) {
         return -1;
     }
 
-    uint8_t interruptsWereEnabled = bit_is_set(SREG, SREG_I);
+    uint8_t interrupts = bit_is_set(SREG, SREG_I);
     cli();
     char c = inputBuffer[inputTail];
     inputTail = (inputTail + 1) % INPUT_BUFFER_SIZE; // Wrap when end reached
-    if (interruptsWereEnabled) {
+    if (interrupts) {
         sei();
     }
 
